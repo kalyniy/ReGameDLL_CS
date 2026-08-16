@@ -41,8 +41,18 @@
 #endif
 
 // Used to step into the debugger
+// int3 is the x86 breakpoint instruction and does not assemble on other architectures --
+// AArch64 spells it "brk #0". __builtin_trap() is portable and lowers to the right
+// instruction everywhere, but it is also marked noreturn, so keep the explicit asm on x86
+// where execution is expected to be resumable from a debugger.
 #if defined(__GNUC__) || defined(__clang__)
-	#define DebuggerBreak() __asm__ __volatile__("int3;")
+	#if defined(__i386__) || defined(__x86_64__)
+		#define DebuggerBreak() __asm__ __volatile__("int3;")
+	#elif defined(__aarch64__)
+		#define DebuggerBreak() __asm__ __volatile__("brk #0")
+	#else
+		#define DebuggerBreak() __builtin_trap()
+	#endif
 #else
 	#define DebuggerBreak() __asm { int 3 }
 #endif
