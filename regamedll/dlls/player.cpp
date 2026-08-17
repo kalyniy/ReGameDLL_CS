@@ -5485,6 +5485,24 @@ pt_end:
 	m_iGaitsequence = pev->gaitsequence;
 
 	StudioProcessGait();
+
+	// Publish the gait yaw where the engine can see it.
+	//
+	// m_flGaityaw supplies the ROOT bone matrix yaw for every player (see
+	// UTIL_GetPlayerGaitYaw, called from animation.cpp), which makes it the single biggest
+	// input to where the limb hitboxes end up. It is a GameDLL member: not networked, not
+	// snapshotted, and produced by a stateful filter, so the engine could neither read it nor
+	// reconstruct it -- which is why lag compensation has always rewound a player's position
+	// and left their body facing the wrong way.
+	//
+	// pev->fuser4 is unused by this mod, unused by pm_shared, and absent from delta.lst
+	// entirely, so it never goes on the wire. Mirroring the value here costs one store per
+	// player per frame and lets ReHLDS snapshot it into its frame history like any other
+	// entity_state_t field. See ReHLDS docs/audit/24.
+	//
+	// This is the last statement of PostThink, so it runs once per player per frame after
+	// every gait update, on every path.
+	pev->fuser4 = m_flGaityaw;
 }
 
 // checks if the spot is clear of players

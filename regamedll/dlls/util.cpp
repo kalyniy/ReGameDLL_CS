@@ -1634,7 +1634,12 @@ real_t UTIL_GetPlayerGaitYaw(int playerIndex)
 	CBasePlayer *pPlayer = UTIL_PlayerByIndex(playerIndex);
 	if (pPlayer)
 	{
-		return pPlayer->m_flGaityaw;
+		// pev->fuser4, not m_flGaityaw. PostThink mirrors the live value into it every frame,
+		// so outside lag compensation the two are identical and behaviour is unchanged. Inside
+		// a rewind window ReHLDS overwrites it with the victim's HISTORICAL gait yaw and
+		// restores it afterwards, so the hitboxes get built with the body facing the way it
+		// faced when the shooter saw it. See ReHLDS docs/audit/24.
+		return pPlayer->pev->fuser4;
 	}
 
 	return 0;

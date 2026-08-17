@@ -4716,6 +4716,12 @@ BOOL EXT_FUNC AddToFullPack(struct entity_state_s *state, int e, edict_t *ent, e
 		state->gravity = ent->v.gravity;
 		state->usehull = (ent->v.flags & FL_DUCKING) ? 1 : 0;
 		state->health = int(ent->v.health);
+
+		// Carry the gait yaw into the snapshot. Lag compensation reads the server's own frame
+		// history rather than anything off the wire, so a field written here is rewindable
+		// whether or not delta.lst encodes it -- and fuser4 is not in delta.lst, so this adds
+		// nothing to Protocol 48. See ReHLDS docs/audit/24.
+		state->fuser4 = ent->v.fuser4;
 	}
 	else
 		state->playerclass = ent->v.playerclass;
