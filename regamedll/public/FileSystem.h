@@ -37,6 +37,9 @@
 #ifdef _WIN32
 	#define STDIO_FILESYSTEM_LIB "filesystem_stdio.dll"
 	#define STEAM_FILESYSTEM_LIB "filesystem_steam.dll"
+#elif defined(__APPLE__)
+	#define STDIO_FILESYSTEM_LIB "filesystem_stdio.dylib"
+	#define STEAM_FILESYSTEM_LIB "filesystem_steam.dylib"
 #else
 	#define STDIO_FILESYSTEM_LIB "filesystem_stdio.so"
 	#define STEAM_FILESYSTEM_LIB "filesystem_steam.so"
