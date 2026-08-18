@@ -163,9 +163,14 @@ void CNavArea::Save(int fd, unsigned int version)
 	// in the enum order NORTH, EAST, SOUTH, WEST
 	for (int d = 0; d < NUM_DIRECTIONS; d++)
 	{
-		// save number of connections for this direction
-		size_t count = m_connect[d].size();
-		_write(fd, &count, sizeof(size_t));
+		// save number of connections for this direction. The .nav format is defined by the
+		// original 32-bit game: this field is 4 bytes, and the loader below reads exactly
+		// sizeof(unsigned int). Writing sizeof(size_t) on LP64 emitted 8 bytes, desyncing
+		// the stream by 4 per direction per area -- every 64-bit-authored nav file was
+		// unreadable, including by the build that wrote it. (64-bit Linux never noticed
+		// because its de_dust2.nav had been authored by the 32-bit baseline build.)
+		unsigned int count = (unsigned int)m_connect[d].size();
+		_write(fd, &count, sizeof(unsigned int));
 
 		for (auto &connect : m_connect[d]) {
 			_write(fd, &connect.area->m_id, sizeof(unsigned int));
