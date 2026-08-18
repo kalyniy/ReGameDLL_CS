@@ -26,3 +26,4 @@ publish
 /build64dbg/
 /build-arm64/
 /toolchain-aarch64.cmake
+build-*/
