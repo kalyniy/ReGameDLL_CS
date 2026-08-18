@@ -27,7 +27,9 @@
 */#ifndef ARCHTYPES_H
 #define ARCHTYPES_H
 
-#ifdef __x86_64__
+// X64BITS means "pointers are 8 bytes", not "this is AMD64". Keying it on __x86_64__ alone
+// left intp/uintp at 4 bytes on AArch64 -- see the identical fix in ReHLDS archtypes.h.
+#if defined(__x86_64__) || defined(__aarch64__) || defined(__LP64__) || defined(_WIN64)
 #define X64BITS
 #endif
 

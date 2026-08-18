@@ -70,11 +70,16 @@
 	#include <ctype.h>
 	//#include <dirent.h>
 	#include <dlfcn.h>
-	#include <elf.h>
+	// ELF and the glibc dynamic-linker interface do not exist on Darwin (Mach-O, dyld),
+	// and nothing in the GameDLL uses them.
+	#ifndef __APPLE__
+		#include <elf.h>
+		#include <link.h>
+		#include <sys/sysinfo.h>
+	#endif
 	#include <errno.h>
 	#include <fcntl.h>
 	#include <limits.h>
-	#include <link.h>
 	#include <netdb.h>
 	#include <netinet/in.h>
 	#include <pthread.h>
@@ -84,7 +89,6 @@
 	#include <sys/stat.h>
 	#include <sys/time.h>
 	#include <sys/types.h>
-	#include <sys/sysinfo.h>
 	#include <unistd.h>
 #endif // _WIN32
 

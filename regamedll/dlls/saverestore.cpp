@@ -426,7 +426,11 @@ void CSave::WritePositionVector(const char *pname, const float *value, int count
 
 void CSave::WriteFunction(const char *pname, void **data, int count)
 {
-	const char *functionName = NAME_FOR_FUNCTION((uint32)*data);
+	// The engine's NameForFunction API is 32-bit by ABI freeze; the round-trip through
+	// uintp makes the LP64 truncation explicit, which is exactly what the GCC 64-bit
+	// builds were already doing with a warning. (CS multiplayer never saves games, so
+	// this path is effectively dead on a dedicated server.)
+	const char *functionName = NAME_FOR_FUNCTION((uint32)(uintp)*data);
 
 	if (functionName)
 		BufferField(pname, Q_strlen(functionName) + 1, functionName);

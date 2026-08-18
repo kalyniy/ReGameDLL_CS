@@ -40,7 +40,8 @@ set(COMPILE_FLAGS "-U_FORTIFY_SOURCE")
 set(LINK_LIBS dl)
 
 # do not strip debuginfo during link
-if (NOT DEBUG)
+if (NOT DEBUG AND NOT APPLE)
+	# ld64 deprecated -s; Mach-O debug info lives in .dSYM bundles, not the dylib.
 	set(LINK_FLAGS "-s")
 endif()
 
@@ -139,8 +140,14 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "
 endif()
 
 if (NOT DEBUG)
-	set(LINK_FLAGS "${LINK_FLAGS} \
-		-Wl,-gc-sections -Wl,--version-script=\"${PROJECT_SOURCE_DIR}/../version_script.lds\"")
+	if (APPLE)
+		# ld64: -dead_strip is -gc-sections; there is no --version-script and Mach-O has
+		# no symbol versioning (the ELF script only trims the export table).
+		set(LINK_FLAGS "${LINK_FLAGS} -Wl,-dead_strip")
+	else()
+		set(LINK_FLAGS "${LINK_FLAGS} \
+			-Wl,-gc-sections -Wl,--version-script=\"${PROJECT_SOURCE_DIR}/../version_script.lds\"")
+	endif()
 endif()
 
 find_program(CCACHE_FOUND ccache)
@@ -411,7 +418,11 @@ if (USE_STATIC_LIBSTDC)
 	set(LINK_FLAGS "${LINK_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 
-set(LINK_FLAGS "${LINK_FLAGS} -Wl,-rpath,'$ORIGIN/.'")
+if (APPLE)
+	set(LINK_FLAGS "${LINK_FLAGS} -Wl,-rpath,@loader_path/.")
+else()
+	set(LINK_FLAGS "${LINK_FLAGS} -Wl,-rpath,'$ORIGIN/.'")
+endif()
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
 	set(LINK_FLAGS "${LINK_FLAGS} -L${PROJECT_SOURCE_DIR}/lib/linux32")
@@ -426,6 +437,12 @@ if (XASH_COMPAT)
 	if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 		set_target_properties(regamedll PROPERTIES
 			OUTPUT_NAME server)
+	elseif (APPLE)
+		# liblist.gam's gamedll_osx names dlls/cs.dylib outright, so skip the Xash arch
+		# postfix and produce the file the engine will actually ask for.
+		set_target_properties(regamedll PROPERTIES
+			PREFIX ""
+			OUTPUT_NAME cs)
 	else()
 		set_target_properties(regamedll PROPERTIES
 			PREFIX ""
