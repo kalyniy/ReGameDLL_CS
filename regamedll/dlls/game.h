@@ -220,6 +220,11 @@ extern cvar_t playerid_field;
 extern cvar_t knockback;
 extern cvar_t knife_wall_sparks;
 extern cvar_t show_bomb_timer;
+extern cvar_t halftime;
+extern cvar_t maxrounds_match;
+extern cvar_t overtime;
+extern cvar_t overtime_maxrounds;
+extern cvar_t overtime_startmoney;
 
 #endif
 

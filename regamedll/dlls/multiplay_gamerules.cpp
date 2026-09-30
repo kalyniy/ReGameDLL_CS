@@ -425,6 +425,7 @@ CHalfLifeMultiplay::CHalfLifeMultiplay()
 	}
 
 	m_iTotalRoundsPlayed = 0;
+	ResetMatchState();
 	m_iMaxRoundsWon = int(CVAR_GET_FLOAT("mp_winlimit"));
 
 	if (m_iMaxRoundsWon < 0)
@@ -1538,6 +1539,116 @@ void CHalfLifeMultiplay::SwapAllPlayers()
 	UpdateTeamScores();
 }
 
+// Match format (mp_halftime 1; the Cs16Ai self-play servers' league rules). A match is mp_maxrounds_match
+// rounds (MR15 = 30). After half of them the sides swap WITH their scores (SwapAllPlayers), every player
+// starts the next round with mp_startmoney and the pistol-round kit, and the loss bonus and the streaks
+// start over; the first team to half + 1 wins. A tie after all of them plays an overtime (mp_overtime 1) of
+// mp_overtime_maxrounds rounds with mp_overtime_startmoney: it starts on the sides the previous half ended
+// on, swaps at its own halftime (money reset again), and is won by the first team to half + 1 of ITS rounds;
+// a tie starts another overtime under the same rules. The match end logs "Match_End" and does a complete
+// reset (the sv_restart path: 0-0, mp_startmoney, streaks) -- never an intermission. A draw counts as a
+// played round. Every decision is made while the next round is set up (RestartRound), so the swap and the
+// money land before that round's freeze time. mp_halftime 0 = the stock round loop, untouched.
+bool CHalfLifeMultiplay::IsMatchMode() const
+{
+#ifdef REGAMEDLL_ADD
+	return halftime.value != 0.0f;
+#else
+	return false;
+#endif
+}
+
+void CHalfLifeMultiplay::ResetMatchState()
+{
+	m_iMatchRoundsPlayed = 0;
+	m_iMatchOvertime = 0;
+	m_iMatchOvertimeStartRound = 0;
+	m_iMatchOvertimeBaseScore = 0;
+}
+
+#ifdef REGAMEDLL_ADD
+static int MatchRegulationRounds()
+{
+	return Q_max(2, int(maxrounds_match.value));
+}
+
+static int MatchOvertimeRounds()
+{
+	return Q_max(2, int(overtime_maxrounds.value));
+}
+#endif
+
+// Called once per completed round (m_iMatchRoundsPlayed already counts it) with the scores of that round.
+// On MATCH_HALFTIME / MATCH_OVERTIME, iHalfStartMoney is the money every player starts the next round with.
+CHalfLifeMultiplay::MatchTransition CHalfLifeMultiplay::MatchRoundCompleted(int &iHalfStartMoney)
+{
+#ifdef REGAMEDLL_ADD
+	if (!IsMatchMode())
+		return MATCH_CONTINUE;
+
+	const int ct = m_iNumCTWins;
+	const int t = m_iNumTerroristWins;
+
+	int rounds, played, toWin, money;
+	if (m_iMatchOvertime == 0)
+	{
+		rounds = MatchRegulationRounds();
+		played = m_iMatchRoundsPlayed;
+		toWin = rounds / 2 + 1;
+		CheckStartMoney();
+		money = int(startmoney.value);
+	}
+	else
+	{
+		rounds = MatchOvertimeRounds();
+		played = m_iMatchRoundsPlayed - m_iMatchOvertimeStartRound;
+		toWin = m_iMatchOvertimeBaseScore + rounds / 2 + 1;
+		money = int(overtime_startmoney.value);
+	}
+
+	if (ct >= toWin || t >= toWin)
+		return MATCH_END;
+
+	if (played >= rounds)
+	{
+		// every round of this regulation / overtime is played: a tie goes to (another) overtime
+		if (ct != t || overtime.value == 0.0f)
+			return MATCH_END;
+
+		m_iMatchOvertime++;
+		m_iMatchOvertimeStartRound = m_iMatchRoundsPlayed;
+		m_iMatchOvertimeBaseScore = ct;
+		iHalfStartMoney = int(overtime_startmoney.value);
+		return MATCH_OVERTIME;
+	}
+
+	if (played == rounds / 2)
+	{
+		iHalfStartMoney = money;
+		return MATCH_HALFTIME;
+	}
+#endif
+
+	return MATCH_CONTINUE;
+}
+
+void CHalfLifeMultiplay::MatchLogRoundStart() const
+{
+#ifdef REGAMEDLL_ADD
+	if (!IsMatchMode())
+		return;
+
+	int half;
+	if (m_iMatchOvertime == 0)
+		half = (m_iMatchRoundsPlayed < MatchRegulationRounds() / 2) ? 1 : 2;
+	else
+		half = (m_iMatchRoundsPlayed - m_iMatchOvertimeStartRound < MatchOvertimeRounds() / 2) ? 1 : 2;
+
+	UTIL_LogPrintf("World triggered \"Match_Round\" (round \"%i\") (half \"%i\") (overtime \"%i\") (CT \"%i\") (T \"%i\")\n",
+		m_iMatchRoundsPlayed + 1, half, m_iMatchOvertime, m_iNumCTWins, m_iNumTerroristWins);
+#endif
+}
+
 LINK_HOOK_CLASS_VOID_CUSTOM_CHAIN2(CHalfLifeMultiplay, CSGameRules, BalanceTeams)
 
 void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(BalanceTeams)()
@@ -1692,6 +1803,43 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(RestartRound)()
 		m_iTotalRoundsPlayed++;
 	}
 
+	// Match format: the round that just ended may end the half, the regulation, an overtime or the match.
+	// Decided here, before the players are counted and respawned, so they spawn on the new side.
+	MatchTransition matchTransition = MATCH_CONTINUE;
+	int iHalfStartMoney = 0;
+
+	if (!m_bCompleteReset && !m_bNeededPlayers && m_iRoundWinStatus != WINSTATUS_NONE)
+	{
+		// a draw counts as a played round
+		m_iMatchRoundsPlayed++;
+		matchTransition = MatchRoundCompleted(iHalfStartMoney);
+
+		switch (matchTransition)
+		{
+		case MATCH_END:
+			UTIL_LogPrintf("World triggered \"Match_End\" (CT \"%i\") (T \"%i\")\n", m_iNumCTWins, m_iNumTerroristWins);
+
+			// a complete reset, the sv_restart path below: 0-0, mp_startmoney, streaks and loss bonus reset
+			m_bCompleteReset = true;
+			break;
+		case MATCH_HALFTIME:
+			// swaps every player's team and the two win counters, and sends the swapped TeamScore
+			SwapAllPlayers();
+			UTIL_LogPrintf("World triggered \"Halftime\" (CT \"%i\") (T \"%i\") (round \"%i\") (overtime \"%i\") (startmoney \"%i\")\n",
+				m_iNumCTWins, m_iNumTerroristWins, m_iMatchRoundsPlayed + 1, m_iMatchOvertime, iHalfStartMoney);
+			break;
+		case MATCH_OVERTIME:
+			// an overtime starts on the sides the previous half ended on; it swaps at its own halftime
+			UTIL_LogPrintf("World triggered \"Overtime\" (CT \"%i\") (T \"%i\") (round \"%i\") (overtime \"%i\") (startmoney \"%i\")\n",
+				m_iNumCTWins, m_iNumTerroristWins, m_iMatchRoundsPlayed + 1, m_iMatchOvertime, iHalfStartMoney);
+			break;
+		default:
+			break;
+		}
+	}
+
+	const bool bMatchHalfStart = (matchTransition == MATCH_HALFTIME || matchTransition == MATCH_OVERTIME);
+
 	ClearBodyQue();
 
 	// Hardlock the player accelaration to 5.0
@@ -1783,6 +1931,7 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(RestartRound)()
 
 		// Reset total # of rounds played
 		m_iTotalRoundsPlayed = 0;
+		ResetMatchState();
 		m_iMaxRounds = int(CVAR_GET_FLOAT("mp_maxrounds"));
 
 		if (m_iMaxRounds < 0)
@@ -1976,6 +2125,15 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(RestartRound)()
 		m_iNumConsecutiveCTLoses = 0;
 		m_iLoserBonus = m_rgRewardAccountRules[RR_LOSER_BONUS_DEFAULT];
 	}
+	else if (bMatchHalfStart)
+	{
+		// A new half (or overtime half) starts its economy like a new match, but keeps the scores:
+		// no round-end bonus, the loss bonus and the streaks start over. Money is set per player below.
+		m_iAccountTerrorist = m_iAccountCT = 0;
+		m_iNumConsecutiveTerroristLoses = 0;
+		m_iNumConsecutiveCTLoses = 0;
+		m_iLoserBonus = m_rgRewardAccountRules[RR_LOSER_BONUS_DEFAULT];
+	}
 
 #ifdef REGAMEDLL_FIXES
 	// Respawn entities (glass, doors, etc..)
@@ -2044,6 +2202,15 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(RestartRound)()
 			}
 #endif
 
+			if (bMatchHalfStart)
+			{
+				// the half's pistol round: strip everything (weapons, armour, grenades, defuser) as the
+				// complete reset does, and set the money to the half's start value
+				pPlayer->m_bNotKilled = false;
+				pPlayer->RemoveAllItems(TRUE);
+				pPlayer->AddAccount(iHalfStartMoney, RT_PLAYER_RESET, false);
+			}
+
 			pPlayer->RoundRespawn();
 
 #ifdef REGAMEDLL_ADD
@@ -2092,6 +2259,8 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(RestartRound)()
 	m_bTargetBombed = m_bBombDefused = false;
 	m_bLevelInitialized = false;
 	m_bCompleteReset = false;
+
+	MatchLogRoundStart();
 
 #ifdef REGAMEDLL_ADD
 	FireTargets("game_round_start", nullptr, nullptr, USE_TOGGLE, 0.0);
@@ -2439,7 +2608,8 @@ void EXT_FUNC CHalfLifeMultiplay::__API_HOOK(Think)()
 	if (CheckFragLimit())
 		return;
 
-	if (!IsCareer())
+	// in match mode the match loop ends the game with a complete reset, never an intermission
+	if (!IsCareer() && !IsMatchMode())
 	{
 		// have we hit the max rounds?
 		if (CheckMaxRounds())

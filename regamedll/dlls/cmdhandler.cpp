@@ -18,8 +18,108 @@ void InstallCommands()
 
 	ADD_SERVER_COMMAND("perf_test", SV_LoopPerformance_f);
 	ADD_SERVER_COMMAND("print_ent", SV_PrintEntities_f);
+	// Cs16Ai P2 engine probes (sv_cheats 1 only)
+	ADD_SERVER_COMMAND("probe_setpos", SV_ProbeSetPos_f);
+	ADD_SERVER_COMMAND("probe_getpos", SV_ProbeGetPos_f);
 
 	installedCommands = true;
+}
+
+// Cs16Ai P2 engine probes (the movement parity and penetration probes; Cs16Ai out/p2/h/round3.md). Refused unless
+// sv_cheats is 1. `first` is the index of the first argument after the target:
+//   probe_setpos x y z [pitch yaw roll [vx vy vz [duck 0|1]]]     place the player exactly (a teleport: FL_ONGROUND cleared,
+//                                                                   the view set with fixangle, velocity and base velocity set)
+void ProbeSetPos(CBasePlayer *pPlayer, int first)
+{
+	if (CVAR_GET_FLOAT("sv_cheats") == 0.0f)
+	{
+		SERVER_PRINT("probe_setpos: needs sv_cheats 1\n");
+		return;
+	}
+	if (!pPlayer || !pPlayer->IsAlive() || CMD_ARGC() < first + 3)
+	{
+		SERVER_PRINT("usage: probe_setpos [entindex] x y z [pitch yaw roll [vx vy vz [duck 0|1]]] (a living player)\n");
+		return;
+	}
+	entvars_t *pev = pPlayer->pev;
+	const Vector origin(Q_atof(CMD_ARGV(first)), Q_atof(CMD_ARGV(first + 1)), Q_atof(CMD_ARGV(first + 2)));
+	if (CMD_ARGC() >= first + 10)
+	{
+		// the stance first: a ducked player has the ducked hull and view offset (pm_shared PM_Duck's end state)
+		if (Q_atoi(CMD_ARGV(first + 9)) != 0)
+		{
+			pev->flags |= FL_DUCKING;
+			pev->view_ofs = VEC_DUCK_VIEW;
+			UTIL_SetSize(pev, VEC_DUCK_HULL_MIN, VEC_DUCK_HULL_MAX);
+		}
+		else
+		{
+			pev->flags &= ~FL_DUCKING;
+			pev->view_ofs = VEC_VIEW;
+			UTIL_SetSize(pev, VEC_HULL_MIN, VEC_HULL_MAX);
+		}
+		pev->bInDuck = FALSE;
+		pev->flDuckTime = 0;
+	}
+	pev->flags &= ~FL_ONGROUND;
+	UTIL_SetOrigin(pev, origin);
+	if (CMD_ARGC() >= first + 6)
+	{
+		const Vector angles(Q_atof(CMD_ARGV(first + 3)), Q_atof(CMD_ARGV(first + 4)), Q_atof(CMD_ARGV(first + 5)));
+		pev->angles = angles;
+		pev->v_angle = angles;
+		pev->fixangle = 1;
+	}
+	pev->velocity = g_vecZero;
+	if (CMD_ARGC() >= first + 9)
+		pev->velocity = Vector(Q_atof(CMD_ARGV(first + 6)), Q_atof(CMD_ARGV(first + 7)), Q_atof(CMD_ARGV(first + 8)));
+	pev->basevelocity = g_vecZero;
+	UTIL_LogPrintf("probe_setpos: #%d \"%s\" origin %.4f %.4f %.4f angles %.4f %.4f %.4f velocity %.4f %.4f %.4f flags %d time %.4f\n",
+	               pPlayer->entindex(), STRING(pev->netname), pev->origin.x, pev->origin.y, pev->origin.z, pev->v_angle.x, pev->v_angle.y,
+	               pev->v_angle.z, pev->velocity.x, pev->velocity.y, pev->velocity.z, pev->flags, gpGlobals->time);
+}
+
+// probe_getpos: where the player is, on the server, now (to the log and the console)
+void ProbeGetPos(CBasePlayer *pPlayer)
+{
+	if (!pPlayer)
+		return;
+	entvars_t *pev = pPlayer->pev;
+	char line[512];
+	Q_snprintf(line, sizeof(line), "probe_getpos: #%d \"%s\" origin %.4f %.4f %.4f angles %.4f %.4f %.4f velocity %.4f %.4f %.4f flags %d onground %d ducking %d time %.4f\n",
+	           pPlayer->entindex(), STRING(pev->netname), pev->origin.x, pev->origin.y, pev->origin.z, pev->v_angle.x, pev->v_angle.y,
+	           pev->v_angle.z, pev->velocity.x, pev->velocity.y, pev->velocity.z, pev->flags, (pev->flags & FL_ONGROUND) ? 1 : 0,
+	           (pev->flags & FL_DUCKING) ? 1 : 0, gpGlobals->time);
+	UTIL_LogPrintf("%s", line);
+	SERVER_PRINT(line);
+}
+
+// server console: probe_setpos <entindex> x y z [...]; probe_getpos <entindex>
+void SV_ProbeSetPos_f()
+{
+	if (CMD_ARGC() < 2)
+	{
+		SERVER_PRINT("usage: probe_setpos <entindex> x y z [pitch yaw roll [vx vy vz [duck 0|1]]]\n");
+		return;
+	}
+	CBasePlayer *pPlayer = UTIL_PlayerByIndex(Q_atoi(CMD_ARGV(1)));
+	ProbeSetPos(UTIL_IsValidPlayer(pPlayer) ? pPlayer : nullptr, 2);
+}
+
+void SV_ProbeGetPos_f()
+{
+	if (CVAR_GET_FLOAT("sv_cheats") == 0.0f)
+	{
+		SERVER_PRINT("probe_getpos: needs sv_cheats 1\n");
+		return;
+	}
+	CBasePlayer *pPlayer = CMD_ARGC() >= 2 ? UTIL_PlayerByIndex(Q_atoi(CMD_ARGV(1))) : nullptr;
+	if (!UTIL_IsValidPlayer(pPlayer))
+	{
+		SERVER_PRINT("usage: probe_getpos <entindex>\n");
+		return;
+	}
+	ProbeGetPos(pPlayer);
 }
 
 void SV_Continue_f()

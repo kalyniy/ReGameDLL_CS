@@ -205,6 +205,13 @@ cvar_t knockback               = { "mp_knockback", "170", 0, 170.0f, nullptr };
 cvar_t knife_wall_sparks       = { "mp_knife_wall_sparks", "0", 0, 0.0f, nullptr };
 cvar_t show_bomb_timer         = { "mp_show_bomb_timer", "0", 0, 0.0f, nullptr };
 
+// Match format (MR-N with halftime and overtime); mp_halftime 0 keeps the stock round loop
+cvar_t halftime                = { "mp_halftime", "0", FCVAR_SERVER, 0.0f, nullptr };
+cvar_t maxrounds_match         = { "mp_maxrounds_match", "30", FCVAR_SERVER, 30.0f, nullptr };
+cvar_t overtime                = { "mp_overtime", "1", FCVAR_SERVER, 1.0f, nullptr };
+cvar_t overtime_maxrounds      = { "mp_overtime_maxrounds", "6", FCVAR_SERVER, 6.0f, nullptr };
+cvar_t overtime_startmoney     = { "mp_overtime_startmoney", "10000", FCVAR_SERVER, 10000.0f, nullptr };
+
 void GameDLL_Version_f()
 {
 	if (Q_stricmp(CMD_ARGV(1), "version") != 0)
@@ -496,6 +503,12 @@ void EXT_FUNC GameDLLInit()
 
 	CVAR_REGISTER(&knife_wall_sparks);
 	CVAR_REGISTER(&show_bomb_timer);
+
+	CVAR_REGISTER(&halftime);
+	CVAR_REGISTER(&maxrounds_match);
+	CVAR_REGISTER(&overtime);
+	CVAR_REGISTER(&overtime_maxrounds);
+	CVAR_REGISTER(&overtime_startmoney);
 
 	// print version
 	CONSOLE_ECHO("ReGameDLL version: " APP_VERSION "\n");

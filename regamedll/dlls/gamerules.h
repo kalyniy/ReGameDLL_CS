@@ -714,6 +714,14 @@ public:
 
 	VFUNC void BalanceTeams();
 	VFUNC void SwapAllPlayers();
+
+	// Match format (mp_halftime): halftime, overtime and the match end, decided between rounds
+	enum MatchTransition { MATCH_CONTINUE, MATCH_HALFTIME, MATCH_OVERTIME, MATCH_END };
+	bool IsMatchMode() const;
+	void ResetMatchState();
+	MatchTransition MatchRoundCompleted(int &iHalfStartMoney);
+	void MatchLogRoundStart() const;
+
 	VFUNC void UpdateTeamScores();
 	VFUNC void EndRoundMessage(const char *sentence, ScenarioEventEndRound event);
 	VFUNC void SetAccountRules(RewardRules rules, int amount) { m_rgRewardAccountRules[rules] = static_cast<RewardAccount>(amount); }
@@ -849,6 +857,13 @@ protected:
 	float m_flTimeLimit;
 	float m_flGameStartTime;
 	bool m_bTeamBalanced;
+
+public:
+	// Match format (mp_halftime 1): the state of the current match, cleared by every complete reset
+	int m_iMatchRoundsPlayed;			// rounds completed since the last complete reset, draws included
+	int m_iMatchOvertime;				// 0 = regulation, k = the k-th overtime is being played
+	int m_iMatchOvertimeStartRound;		// m_iMatchRoundsPlayed when the current overtime started
+	int m_iMatchOvertimeBaseScore;		// each team's score when the current overtime started (a tie)
 };
 
 typedef struct mapcycle_item_s

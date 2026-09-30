@@ -3696,6 +3696,16 @@ void EXT_FUNC InternalCommand(edict_t *pEntity, const char *pcmd, const char *pa
 				}
 			}
 #endif
+			// Cs16Ai P2 engine probes, the calling player on itself (sv_cheats 1 only; cmdhandler.cpp ProbeSetPos)
+			else if (FStrEq(pcmd, "probe_setpos"))
+			{
+				ProbeSetPos(pPlayer, 1);
+			}
+			else if (FStrEq(pcmd, "probe_getpos"))
+			{
+				if (CVAR_GET_FLOAT("sv_cheats") != 0.0f)
+					ProbeGetPos(pPlayer);
+			}
 			else
 			{
 				if (HandleBuyAliasCommands(pPlayer, pcmd))

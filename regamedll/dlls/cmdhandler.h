@@ -39,3 +39,10 @@ EXT_FUNC void SV_Tutor_Toggle_f();
 
 EXT_FUNC void SV_LoopPerformance_f();
 EXT_FUNC void SV_PrintEntities_f();
+
+// Cs16Ai P2 engine probes (sv_cheats 1 only)
+class CBasePlayer;
+void ProbeSetPos(CBasePlayer *pPlayer, int first);
+void ProbeGetPos(CBasePlayer *pPlayer);
+EXT_FUNC void SV_ProbeSetPos_f();
+EXT_FUNC void SV_ProbeGetPos_f();
